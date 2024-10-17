@@ -1,17 +1,49 @@
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy.ndimage import uniform_filter1d
+from scipy.interpolate import interp1d
 from astropy.constants import G, M_sun
 import astropy.units as u
 from ..main import dataclass
 
-def calc_disksize(self, h = 20, r_in = 10, r_out = 500, n_bins = 200, a = 0.8, plot = True, avg_cells = 10, verbose = 1):
+def calc_disksize(self, 
+                  use_fitted_H = False,
+                  h = 20, 
+                  r_in = 10, 
+                  r_out = 500, 
+                  n_bins = 200, 
+                  a = 0.8, 
+                  plot = True, 
+                  avg_cells = 10, 
+                  verbose = 1):
+    
     try: self.cyl_z
     except: self.recalc_L()
-    h, r_in, r_out = np.array([h, r_in, r_out]) / self.code2au
+    
+    if use_fitted_H:
+        try: self.r_bins
+        except: 
+            self.fit_HΣ(r_in = r_in, 
+                        r_out = r_out, 
+                        n_bins = n_bins, 
+                        plot = False, 
+                        verbose=verbose)
+    if use_fitted_H:
+        rad_bins = self.r_bins
+        r_plot = rad_bins[:-1] + 0.5 * np.diff(rad_bins)
+        H_func = interp1d(self.H_1D[:,0], r_plot)
 
-    rad_bins = np.logspace(np.log10(r_in), np.log10(r_out), n_bins)    
-    mask = (abs(self.cyl_z) <  h) & (self.cyl_R < r_out)
+        mask_r = (self.cyl_R > H_func.x.min()) & (self.cyl_R < H_func.x.max())
+        mask_h = abs(self.cyl_z[mask_r]) < 3 * H_func(self.cyl_R[mask_r])
+        mask = np.zeros_like(mask_r, dtype = 'bool')
+        mask[mask_r] = mask_h
+    
+    else:
+        h, r_in, r_out = np.array([h, r_in, r_out]) / self.code2au
+        rad_bins = np.logspace(np.log10(r_in), np.log10(r_out), n_bins)
+        r_plot = rad_bins[:-1] + 0.5 * np.diff(rad_bins)    
+        mask = (abs(self.cyl_z) <  h) & (self.cyl_R < r_out)
+    
     vφ = np.sum(self.vrel[:,mask] * self.e_phi[:,mask], axis=0)
     m = self.m[mask]
     R = self.cyl_R[mask]
@@ -24,7 +56,6 @@ def calc_disksize(self, h = 20, r_in = 10, r_out = 500, n_bins = 200, a = 0.8, p
     vφ2 = (h_vφ2/h_mass) 
     self.σ_φ = np.sqrt(vφ2 - self.vφ**2) 
 
-    r_plot = rad_bins[:-1] + 0.5 * np.diff(rad_bins)
     self.kep_vel = (((G * (self.sink_mass  * self.m_cgs) * u.g) / (r_plot * self.code2au * u.au))**0.5).to('cm/s').value
 
 

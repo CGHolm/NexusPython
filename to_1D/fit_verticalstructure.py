@@ -6,12 +6,12 @@ sys.path.insert(0, config['user_lmfit_path'])
 from lmfit import Model  # type: ignore
 from ..main import dataclass
 
-def fit_HΣ(self, r_in = 5, r_out = 100, Nr = 100, plot = True, MMSN = True, dpi = 100, verbose = 1):
+def fit_HΣ(self, r_in = 5, r_out = 100, n_bins = 100, plot = True, MMSN = True, dpi = 100, verbose = 1):
     try: self.cyl_z
     except: self.recalc_L()
     r_in /= self.code2au; r_out /= self.code2au
 
-    r_bins = np.logspace(np.log10(r_in), np.log10(r_out), Nr)
+    r_bins = np.logspace(np.log10(r_in), np.log10(r_out), n_bins)
     r_1D = r_bins[:-1] + 0.5 * np.diff(r_bins) 
 
     def H_func(x, Σ, H): return (Σ) / (np.sqrt(2 * np.pi) * H) * np.exp( - x**2 / (2 * H**2)) 
@@ -28,8 +28,8 @@ def fit_HΣ(self, r_in = 5, r_out = 100, Nr = 100, plot = True, MMSN = True, dpi
 
     mask = (self.cyl_R > r_in) & (self.cyl_R < r_out) & (abs(self.cyl_z) < 2 * r_out) 
 
-    densities = {key: [] for key in range(Nr - 1)}
-    heights = {key: [] for key in range(Nr - 1)}
+    densities = {key: [] for key in range(n_bins - 1)}
+    heights = {key: [] for key in range(n_bins - 1)}
 
     R_binID = np.digitize(self.cyl_R[mask], bins = r_bins) 
 
@@ -38,17 +38,18 @@ def fit_HΣ(self, r_in = 5, r_out = 100, Nr = 100, plot = True, MMSN = True, dpi
         densities[bin - 1].extend(self.mhd['d'][mask][R_binID == bin])
         heights[bin - 1].extend(self.cyl_z[mask].flatten()[R_binID == bin])
 
-    self.Σ_1D = np.zeros((Nr - 1, 2))
-    self.H_1D = np.zeros((Nr - 1, 2))
+    self.Σ_1D = np.zeros((n_bins - 1, 2))
+    self.H_1D = np.zeros((n_bins - 1, 2))
+    self.r_bins = r_bins
     x0 = np.array([1e3 / self.Σ_cgs, 7 / self.code2au]) # Initial guess for surface density and scaleheight in cgs-units
 
     if verbose > 0: print('Fitting surface density and scaleheight in each radial bin')
-    for i in tqdm.tqdm(range(Nr - 1), disable = not self.loading_bar): 
+    for i in tqdm.tqdm(range(n_bins - 1), disable = not self.loading_bar): 
         self.Σ_1D[i], self.H_1D[i] = fit_scaleheight(ρ = densities[i], h = heights[i], x0 = x0)
 
     def check_HΣfit(nH):
-        annulus_m_sum = np.zeros(Nr - 1)
-        annulus_V_sum = np.zeros(Nr - 1)   
+        annulus_m_sum = np.zeros(n_bins - 1)
+        annulus_V_sum = np.zeros(n_bins - 1)   
 
         for bin in np.unique(R_binID[1:]):
             h_bool = abs(self.cyl_z[mask][R_binID == bin]) < nH * (self.H_1D[bin - 1, 0])
