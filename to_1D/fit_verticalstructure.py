@@ -41,7 +41,7 @@ def fit_HΣ(self, r_in = 5, r_out = 100, n_bins = 100, plot = True, MMSN = True,
     self.Σ_1D = np.zeros((n_bins - 1, 2))
     self.H_1D = np.zeros((n_bins - 1, 2))
     self.r_bins = r_bins
-    x0 = np.array([1e3 / self.Σ_cgs, 7 / self.code2au]) # Initial guess for surface density and scaleheight in cgs-units
+    x0 = np.array([1e3 / self.Σ_cgs, 7 / self.code2au]) # Initial guess for surface density and scaleheight in code-units
 
     if verbose > 0: print('Fitting surface density and scaleheight in each radial bin')
     for i in tqdm.tqdm(range(n_bins - 1), disable = not self.loading_bar): 

@@ -1,6 +1,7 @@
 import numpy as np
 import sys, os, tqdm
 from .path_config import config
+import gc
 
 class HiddenPrints:
     def __init__(self, suppress=True):
@@ -38,7 +39,7 @@ class dataclass:
         self.B_cgs = np.sqrt(4.0 * np.pi * self.d_cgs * self.v_cgs ** 2)
         
         self.loading_bar = loading_bar
-        self.data_loaded = False
+
 
         self.amr = {}
         self.mhd = {}
@@ -68,8 +69,10 @@ class dataclass:
                  self.mhd[save] = np.asarray([getattr(data['hydro'][read], coor)._array / getattr(self, unit) for coor in ['x', 'y', 'z']], dtype = self.dtype)
 
             for save, read, unit in zip(['d', 'P', 'm'], ['density', 'thermal_pressure','mass'], ['d_cgs', 'P_cgs', 'code2msun']):
-                self.mhd[save] = np.array(data['hydro'][read]._array / getattr(self, unit), dtype = self.dtype).squeeze() 
+                self.mhd[save] = np.array(data['hydro'][read]._array / getattr(self, unit), dtype = self.dtype).squeeze()
+            self.mhd['gamma'] = np.array(data['hydro']['gamma']._array, dtype = self.dtype).squeeze() 
 
+            del data
             s=rsink(snap, datadir=path, sink_id=self.sink_id)
             self.sink_pos = (np.array([s[coor][self.sink_id] for coor in ['x','y','z']], dtype = self.dtype) - 0.5)
             self.sink_vel = np.array([s[v_comp][self.sink_id] for v_comp in ['ux', 'uy', 'uz']], dtype = self.dtype) 
@@ -96,7 +99,7 @@ class dataclass:
 
         assert (self.amr['pos'].min() > -0.5) & (self.amr['pos'].max() < 0.5), 'Data snapshot might be corrupted'     
 
-        self.data_loaded = True
+        gc.collect() # Clean memory
 
         if verbose > 0: print('Assigning relative coordinates to all 1D vectors...')
         self.lmax = int(np.log(self.amr['ds'].min()) / np.log(0.5))

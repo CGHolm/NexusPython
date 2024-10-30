@@ -1,7 +1,16 @@
-import sys
+import sys, os, multiprocessing
 import numpy as np
 from ..main import dataclass
 from ..path_config import config
+
+max_threads = multiprocessing.cpu_count()
+os.environ['OMP_NUM_THREADS'] = str(max_threads)
+# Now import Numba and configure the threads
+from numba import  set_num_threads 
+# Set the number of threads before any parallel operation
+set_num_threads(max_threads)
+
+
 sys.path.insert(0, config["user_osyris_path"])
 import osyris
 

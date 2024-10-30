@@ -31,9 +31,9 @@ def calc_disksize(self,
     if use_fitted_H:
         rad_bins = self.r_bins
         r_plot = rad_bins[:-1] + 0.5 * np.diff(rad_bins)
-        H_func = interp1d(self.H_1D[:,0], r_plot)
+        H_func = interp1d(self.H_1D[:,0], r_plot, fill_value='extrapolate')
 
-        mask_r = (self.cyl_R > H_func.x.min()) & (self.cyl_R < H_func.x.max())
+        mask_r = (self.cyl_R > rad_bins.min()) & (self.cyl_R < rad_bins.max())
         mask_h = abs(self.cyl_z[mask_r]) < 3 * H_func(self.cyl_R[mask_r])
         mask = np.zeros_like(mask_r, dtype = 'bool')
         mask[mask_r] = mask_h
@@ -52,15 +52,16 @@ def calc_disksize(self,
     h_vφ, _ = np.histogram(R, bins = rad_bins, weights =  vφ * m)
     h_vφ2, _ = np.histogram(R, bins = rad_bins, weights =  vφ**2 * m)
 
-    self.vφ = (h_vφ/h_mass) 
+    vφ_1D = (h_vφ/h_mass) 
     vφ2 = (h_vφ2/h_mass) 
-    self.σ_φ = np.sqrt(vφ2 - self.vφ**2) 
+    σvφ_1D = np.sqrt(vφ2 - vφ_1D**2) 
+    self.vφ_1D = np.stack((vφ_1D, σvφ_1D), axis = 1)
 
     self.kep_vel = (((G * (self.sink_mass  * self.m_cgs) * u.g) / (r_plot * self.code2au * u.au))**0.5).to('cm/s').value
 
 
-    orbitvel_ratio_mean = uniform_filter1d(self.v_cgs * self.vφ  / self.kep_vel, size = avg_cells)
-    for i in range(len(self.vφ)):
+    orbitvel_ratio_mean = uniform_filter1d(self.v_cgs * self.vφ_1D[:,0] / self.kep_vel, size = avg_cells)
+    for i in range(len(self.vφ_1D[:,0])):
         if orbitvel_ratio_mean[i] < a:
             self.disk_size = r_plot[i] * self.code2au
             if verbose > 0: print(f'Disk size: {self.disk_size:2.1f} au')
@@ -77,8 +78,8 @@ def calc_disksize(self,
 
 
         axs[0].loglog(r_plot * self.code2au, self.kep_vel, label = 'Keplerian Orbital Velocity', color = 'black')
-        axs[0].loglog(r_plot * self.code2au, self.vφ * self.v_cgs , label = 'Azimuthal velocity v$_φ$', c = 'blue')
-        axs[0].fill_between(r_plot * self.code2au, (self.vφ - self.σ_φ) * self.v_cgs, (self.vφ + self.σ_φ)* self.v_cgs, alpha = 0.5, label = '$\pm1\sigma_{φ}$')
+        axs[0].loglog(r_plot * self.code2au, self.vφ_1D[:,0]* self.v_cgs , label = 'Azimuthal velocity v$_φ$', c = 'blue')
+        axs[0].fill_between(r_plot * self.code2au, (self.vφ_1D[:,0]- self.vφ_1D[:,1]) * self.v_cgs, (self.vφ_1D[:,0]+ self.vφ_1D[:,1])* self.v_cgs, alpha = 0.5, label = '$\pm1\sigma_{φ}$')
 
         axs[0].set(xlabel = 'Distance from sink [au]', ylabel = 'Orbital speed [cm/s]')
 
