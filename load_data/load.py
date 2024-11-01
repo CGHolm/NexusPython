@@ -1,6 +1,7 @@
 import numpy as np
 import tqdm, sys, os
 from ..path_config import config 
+from .polytrope import calc_pressure, calc_gamma
 from ..main import dataclass
 import tqdm
 
@@ -34,15 +35,16 @@ def load_RAMSES(snap, path):
     ds.meta['unit_t'] = unit.tcgs
     ds.meta['unit_d'] = unit.d
     ds.set_units()
+    data = ds.load()
+    data['hydro']['gamma'] = osyris.Array(calc_gamma(data['hydro']['density']._array ))
 
-    return ds.load(), ds
+    return data, ds
 
 def load_DISPATCH(snap, sink_id, path, loading_bar):
     dict_amr = {key: [] for key in ['pos', 'ds']}
     dict_mhd = {key: [] for key in ['vel', 'B', 'd', 'P', 'm', 'gamma']}
     dict_sink = {key: [] for key in ['pos', 'vel', 'age', 'mass']}
 
-    from .polytrope import calc_pressure, calc_gamma
     sys.path.insert(0, config["user_dispatch_path"])
     import dispatch as dis
 
@@ -84,7 +86,7 @@ def load_DISPATCH(snap, sink_id, path, loading_bar):
         dict_mhd['gamma'].extend((p.γ[to_extract].T).tolist())
     
     #Load in sink data closest to the snapshot time
-    sn_times = np.array([sink_out.time for sink_out in sn.sinks[13]])
+    sn_times = np.array([sink_out.time for sink_out in sn.sinks[sink_id]])
     sn_i = np.argmin(abs(sn.time - sn_times))
     dict_sink['pos'] = sn.sinks[sink_id][sn_i].position
     dict_sink['vel'] = sn.sinks[sink_id][sn_i].velocity

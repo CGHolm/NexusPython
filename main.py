@@ -76,7 +76,7 @@ class dataclass:
             s=rsink(snap, datadir=path, sink_id=self.sink_id)
             self.sink_pos = (np.array([s[coor][self.sink_id] for coor in ['x','y','z']], dtype = self.dtype) - 0.5)
             self.sink_vel = np.array([s[v_comp][self.sink_id] for v_comp in ['ux', 'uy', 'uz']], dtype = self.dtype) 
-            self.age = s['snapshot_time']
+            self.time = s['snapshot_time']
             self.sink_mass = s['m'][self.sink_id] 
         
         if self.io == 'DISPATCH':
@@ -94,7 +94,7 @@ class dataclass:
 
             self.sink_pos = dict_sink['pos'].astype(self.dtype)
             self.sink_vel = dict_sink['vel'].astype(self.dtype) 
-            self.age = dict_sink['age'].astype(self.dtype) 
+            self.time = dict_sink['age'].astype(self.dtype) 
             self.sink_mass = dict_sink['mass'].astype(self.dtype) 
 
         assert (self.amr['pos'].min() > -0.5) & (self.amr['pos'].max() < 0.5), 'Data snapshot might be corrupted'     
