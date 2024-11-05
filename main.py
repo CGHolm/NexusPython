@@ -1,6 +1,7 @@
 import numpy as np
 import sys, os, tqdm
 from .path_config import config
+import multiprocessing as mp
 import gc
 
 class HiddenPrints:
@@ -18,6 +19,20 @@ class HiddenPrints:
             sys.stdout = self._original_stdout
 
 calc_ang = lambda vector1, vector2: np.rad2deg(np.arccos(np.dot(vector1, vector2) / (np.linalg.norm(vector1) * np.linalg.norm(vector2))))
+
+def process_snapshot(snapshot, sink, path):
+    from nexus.path_config import config
+    sys.path.insert(0,config['user_dispatch_path'])
+    import dispatch as dis
+    sn = int(snapshot)
+    try:
+        with HiddenPrints():
+            sn = dis.snapshot(sn, data=path, verbose=0)
+            mass  = [sn.sinks[sink][i].mass for i in range(len(sn.sinks[sink]))]
+            time = [sn.sinks[sink][i].time for i in range(len(sn.sinks[sink]))]
+    except:
+        return 
+    return mass, time
 
 #### All data variables are saved in cgs units. (Execpt sink_mass which is in [Msun]] #####
 class dataclass:
@@ -37,15 +52,41 @@ class dataclass:
         self.Σ_cgs = self.d_cgs * self.l_cgs
         self.P_cgs = self.d_cgs * (self.l_cgs / self.t_cgs)**2
         self.B_cgs = np.sqrt(4.0 * np.pi * self.d_cgs * self.v_cgs ** 2)
-        
         self.loading_bar = loading_bar
-
 
         self.amr = {}
         self.mhd = {}
-        
+
+    def sink_evolution(self, sn_start, sn_end, sink_id, path, io = 'DISPATCH', clean_data = True, verbose = 1): 
+        snapshots = np.arange(sn_start, sn_end + 1)
+        self.sink_data = {}
+        if io == 'DISPATCH':
+            args = [(snapshot, sink_id, path) for snapshot in snapshots]
+            n_cpu = np.minimum(mp.cpu_count(), np.shape(snapshots))[0]
+            with mp.Pool(n_cpu) as pool:
+                results = list(pool.starmap(process_snapshot, args))
+
+            mass = []; time = [];    
+            for cpu_part in results:   
+                if cpu_part == None: continue 
+                mass.extend(cpu_part[0])
+                time.extend(cpu_part[1])
+            
+            if clean_data:
+                i_del = []
+                for i in range(len(time) - 1):
+                    if time[i + 1] <= time[i]:
+                        i_del.extend(i + np.where(time[i:] <= time[i])[0])
+                i_del = np.unique(i_del)
+                time = np.delete(time.copy(), i_del) - time[0]
+                mass = np.delete(mass.copy(), i_del)
+                self.sink_data['mdot'] = np.gradient(mass, time)
+
+            self.sink_data['mass'] = mass
+            self.sink_data['time'] = time
+
         # dtype = float64 for the Osryis implementation
-    def load(self, io, snap, path, sink_id, verbose = 1, dtype = 'float32'):
+    def load(self, io, snap, path, sink_id, data_sphere_au = None, lv_cut = 0, verbose = 1, dtype = 'float32'):
         self.dtype = dtype
         self.io = io
         self.sink_id = sink_id
@@ -57,7 +98,7 @@ class dataclass:
             sys.path.insert(0, config["user_pyramses_path"])
             from pyramses.sink import rsink # type: ignore
             with HiddenPrints(suppress= not self.loading_bar ): 
-                data, ds = load_RAMSES(snap = snap, path = path)
+                data, ds = self.load_RAMSES(snap = snap, path = path)
         
             self.amr['pos'] = np.asarray([getattr(data['amr']['position'], coor)._array / self.l_cgs - 0.5 for coor in ['x', 'y', 'z']], dtype = self.dtype)
             self.amr['ds'] = np.array(data['amr']['dx']._array / self.l_cgs, dtype=self.dtype).squeeze()
@@ -80,23 +121,14 @@ class dataclass:
             self.sink_mass = s['m'][self.sink_id] 
         
         if self.io == 'DISPATCH':
+            self.data_sphere_au = data_sphere_au
+            self.lv_cut = lv_cut 
             
             ####_______________________________LOADING DISPATCH DATA____________________________________####
             
             from .load_data.load import load_DISPATCH
-            dict_amr, dict_mhd, dict_sink = load_DISPATCH(snap, self.sink_id, path, self.loading_bar)
+            self.load_DISPATCH(snap, path, self.loading_bar, verbose = verbose)
             
-            for key in dict_amr:
-                self.amr[key] = dict_amr[key].astype(self.dtype)
-            
-            for key in dict_mhd:
-                self.mhd[key] = dict_mhd[key].astype(self.dtype) 
-
-            self.sink_pos = dict_sink['pos'].astype(self.dtype)
-            self.sink_vel = dict_sink['vel'].astype(self.dtype) 
-            self.time = dict_sink['age'].astype(self.dtype) 
-            self.sink_mass = dict_sink['mass'].astype(self.dtype) 
-
         assert (self.amr['pos'].min() > -0.5) & (self.amr['pos'].max() < 0.5), 'Data snapshot might be corrupted'     
 
         gc.collect() # Clean memory
@@ -190,6 +222,8 @@ class dataclass:
         proj_r = np.sum(self.cyl_r * self.new_x[:, None], axis=0).astype(self.dtype)
         proj_φ = np.sum(self.cyl_r * self.new_y[:, None], axis=0).astype(self.dtype)
         self.φ = np.arctan2(proj_φ, proj_r) + np.pi
+
+
     
 
 

@@ -5,53 +5,51 @@ from .polytrope import calc_pressure, calc_gamma
 from ..main import dataclass
 import tqdm
 
-def load_RAMSES(snap, path):
+def load_RAMSES(self, snap, path):
     sys.path.insert(0, config["user_osyris_path"])
     import osyris
-    # constants
-    class units_class():
-        def __init__(self):
-            self.au = 14959787070000                  # 1 au in cm
-            self.pc = self.au * 3600. * 180. / np.pi  # 1 parsec in cm
-            self.yr = 3600. * 24. * 365.25            # astronomical year in seconds
-            self.msun = 1.98847e33                    # solar masses in g
-            
-            # cgs units
-            self.lcgs = 4. * self.pc                  # 4 parsec in cm
-            self.vcgs = 1.8e4                         # 0.18 km/s
-            self.tcgs = self.lcgs / self.vcgs         # 21.7 Myr in seconds
-            
-            # natural units
-            self.l = self.lcgs / self.au              # box size in AU
-            self.v = 0.18                             # velocity in km/s
-            self.t = self.tcgs / self.yr              # time in yr
-            self.n = 798.                             # number density in ppc
-            self.m = 2998.                            # mass in solar masses
-            self.d = (self.m * self.msun) / self.lcgs**3 # density in g / cm^-3
 
-    unit = units_class()
     ds = osyris.Dataset(snap, path=path)
-    ds.meta['unit_l'] = unit.lcgs
-    ds.meta['unit_t'] = unit.tcgs
-    ds.meta['unit_d'] = unit.d
+    ds.meta['unit_l'] = self.l_cgs
+    ds.meta['unit_t'] = self.t_cgs
+    ds.meta['unit_d'] = self.d_cgs
     ds.set_units()
     data = ds.load()
     data['hydro']['gamma'] = osyris.Array(calc_gamma(data['hydro']['density']._array ))
 
     return data, ds
 
-def load_DISPATCH(snap, sink_id, path, loading_bar):
-    dict_amr = {key: [] for key in ['pos', 'ds']}
-    dict_mhd = {key: [] for key in ['vel', 'B', 'd', 'P', 'm', 'gamma']}
-    dict_sink = {key: [] for key in ['pos', 'vel', 'age', 'mass']}
+dataclass.load_RAMSES = load_RAMSES
+
+def load_DISPATCH(self, snap, path, loading_bar, verbose):
+    if verbose > 0 and self.data_sphere_au != None:
+        print(f'Only selecting patches for the combined dataset within {self.data_sphere_au} au and with level > {self.lv_cut}')
+
+    self.amr = {key: [] for key in ['pos', 'ds']}
+    self.mhd = {key: [] for key in ['vel', 'B', 'd', 'P', 'm', 'gamma']}
 
     sys.path.insert(0, config["user_dispatch_path"])
     import dispatch as dis
 
     sn = dis.snapshot(snap, '.', data = path)
 
+    #Load in sink data closest to the snapshot time
+    sn_times = np.array([sink_out.time for sink_out in sn.sinks[self.sink_id]])
+    sn_i = np.argmin(abs(sn.time - sn_times))
+
+    self.sink_pos = sn.sinks[self.sink_id][sn_i].position.astype(self.dtype)
+    self.sink_vel = sn.sinks[self.sink_id][sn_i].velocity.astype(self.dtype) 
+    self.time = sn.sinks[self.sink_id][sn_i].time.astype(self.dtype) 
+    self.sink_mass = sn.sinks[self.sink_id][sn_i].mass.astype(self.dtype) 
+
     #Sort the patces according to their level
-    pp = [p for p in sn.patches]
+    if self.data_sphere_au == None:
+        pp = [p for p in sn.patches]
+    else:
+        pp = [p for p in sn.patches 
+              if (np.linalg.norm(np.array(np.meshgrid(p.xi, p.yi, p.zi, indexing='ij')) - self.sink_pos[:,None,None,None], axis = 0) < self.data_sphere_au / self.code2au).any()  
+              and p.level > self.lv_cut]
+        
     w = np.array([p.level for p in pp]).argsort()[::-1]
     sorted_patches = [pp[w[i]] for i in range(len(pp))]
 
@@ -75,29 +73,20 @@ def load_DISPATCH(snap, sink_id, path, loading_bar):
                                    & (p.xyz < leaf_extent[:, 1, None, None, None]), axis=0)
             to_extract *= covered_bool 
         
-        dict_amr['pos'].extend((p.xyz[:,to_extract].T).tolist())
-        dict_amr['ds'].extend((p.ds[0] * np.ones(to_extract.sum())))
+        self.amr['pos'].extend((p.xyz[:,to_extract].T).tolist())
+        self.amr['ds'].extend((p.ds[0] * np.ones(to_extract.sum())))
 
-        dict_mhd['vel'].extend((p.vel_xyz[:,to_extract].T).tolist())
-        dict_mhd['B'].extend((p.B[:,to_extract].T).tolist())
-        dict_mhd['d'].extend((p.var('d')[to_extract].T).tolist())
-        dict_mhd['P'].extend((p.P[to_extract].T).tolist())
-        dict_mhd['m'].extend((p.m[to_extract].T).tolist())     
-        dict_mhd['gamma'].extend((p.γ[to_extract].T).tolist())
-    
-    #Load in sink data closest to the snapshot time
-    sn_times = np.array([sink_out.time for sink_out in sn.sinks[sink_id]])
-    sn_i = np.argmin(abs(sn.time - sn_times))
-    dict_sink['pos'] = sn.sinks[sink_id][sn_i].position
-    dict_sink['vel'] = sn.sinks[sink_id][sn_i].velocity
-    dict_sink['age'] = sn.sinks[sink_id][sn_i].time
-    dict_sink['mass'] = sn.sinks[sink_id][sn_i].mass
+        self.mhd['vel'].extend((p.vel_xyz[:,to_extract].T).tolist())
+        self.mhd['B'].extend((p.B[:,to_extract].T).tolist())
+        self.mhd['d'].extend((p.var('d')[to_extract].T).tolist())
+        self.mhd['P'].extend((p.P[to_extract].T).tolist())
+        self.mhd['m'].extend((p.m[to_extract].T).tolist())     
+        self.mhd['gamma'].extend((p.γ[to_extract].T).tolist())
 
-    for key in dict_amr:
-        dict_amr[key] = np.array(dict_amr[key]).T
-    for key in dict_mhd:
-        dict_mhd[key] = np.array(dict_mhd[key]).T
-    
-    return dict_amr, dict_mhd, dict_sink
+    for key in self.amr:
+        self.amr[key] = np.array(self.amr[key], dtype = self.dtype).T
+    for key in self.mhd:
+        self.mhd[key] = np.array(self.mhd[key], dtype = self.dtype).T
 
+dataclass.load_DISPATCH = load_DISPATCH
     
