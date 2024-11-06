@@ -74,8 +74,8 @@ def healpy3Dsphere(self,
     for i, ivs in enumerate(variables):
         v = values[ivs]
         w = weights_dict[ivs]
-        pixel_sum = np.bincount(pixel_indices, v * w)
-        pixel_weight = np.bincount(pixel_indices, w)
+        pixel_sum = np.bincount(pixel_indices, v * w, minlength = npix)
+        pixel_weight = np.bincount(pixel_indices, w, minlength = npix)
         map_clean = np.zeros(npix)
         map_clean[pixel_weight > 0] = pixel_sum[pixel_weight > 0] / pixel_weight[pixel_weight > 0]
 
