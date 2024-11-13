@@ -2,37 +2,8 @@ import numpy as np
 import sys, os, tqdm
 from .path_config import config
 import multiprocessing as mp
+from scipy.interpolate import NearestNDInterpolator
 import gc
-
-class HiddenPrints:
-    def __init__(self, suppress=True):
-        self.suppress = suppress
-
-    def __enter__(self):
-        if self.suppress:
-            self._original_stdout = sys.stdout
-            sys.stdout = open(os.devnull, 'w')
-
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        if self.suppress:
-            sys.stdout.close()
-            sys.stdout = self._original_stdout
-
-calc_ang = lambda vector1, vector2: np.rad2deg(np.arccos(np.dot(vector1, vector2) / (np.linalg.norm(vector1) * np.linalg.norm(vector2))))
-
-def process_snapshot(snapshot, sink, path):
-    from nexus.path_config import config
-    sys.path.insert(0,config['user_dispatch_path'])
-    import dispatch as dis
-    sn = int(snapshot)
-    try:
-        with HiddenPrints():
-            sn = dis.snapshot(sn, data=path, verbose=0)
-            mass  = [sn.sinks[sink][i].mass for i in range(len(sn.sinks[sink]))]
-            time = [sn.sinks[sink][i].time for i in range(len(sn.sinks[sink]))]
-    except:
-        return 
-    return mass, time
 
 #### All data variables are saved in cgs units. (Execpt sink_mass which is in [Msun]] #####
 class dataclass:
@@ -224,8 +195,69 @@ class dataclass:
         self.φ = np.arctan2(proj_φ, proj_r) + np.pi
 
 
-    
+    ### This function will be used to compute spherical components of the vector fields###
+    # er_sphere : position vector
+    # eθ_sphere : polar coordinate
+    # eφ_sphere : aziumthal coordinate
+    def spherical_basisvectors(self):
+        try: self.trans_xyz
+        except: self.calc_trans_xyz()
 
+        self.er_sphere = self.trans_xyz / np.linalg.norm(self.trans_xyz, axis = 0)
+
+        phi = np.arctan2(self.trans_xyz[1], self.trans_xyz[0])
+        theta = np.arccos(self.trans_xyz[2] / np.linalg.norm(self.trans_xyz, axis = 0))
+
+        self.eθ_sphere = np.array([np.cos(phi) * np.cos(theta), 
+                           np.sin(phi)*np.cos(theta),
+                           -np.sin(theta)])
+
+        self.eφ_sphere = np.array([-np.sin(phi), 
+                            np.cos(phi), 
+                            np.zeros_like(phi)])
+    
+class HiddenPrints:
+    def __init__(self, suppress=True):
+        self.suppress = suppress
+
+    def __enter__(self):
+        if self.suppress:
+            self._original_stdout = sys.stdout
+            sys.stdout = open(os.devnull, 'w')
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        if self.suppress:
+            sys.stdout.close()
+            sys.stdout = self._original_stdout
+
+calc_ang = lambda vector1, vector2: np.rad2deg(np.arccos(np.dot(vector1, vector2) / (np.linalg.norm(vector1) * np.linalg.norm(vector2))))
+
+def process_snapshot(snapshot, sink, path):
+    from nexus.path_config import config
+    sys.path.insert(0,config['user_dispatch_path'])
+    import dispatch as dis
+    sn = int(snapshot)
+    try:
+        with HiddenPrints():
+            sn = dis.snapshot(sn, data=path, verbose=0)
+            mass  = [sn.sinks[sink][i].mass for i in range(len(sn.sinks[sink]))]
+            time = [sn.sinks[sink][i].time for i in range(len(sn.sinks[sink]))]
+    except:
+        return 
+    return mass, time
+
+def _fill_2Dhist(hist, orig_coor, new_coor, periodic_x = False):
+    x, y = orig_coor; x_new, y_new = new_coor
+    if periodic_x:
+        hist = np.vstack((hist[-10:], hist, hist[:10]))
+        x = np.concatenate((x[0] - x[:10][::-1], x, x[-1] + x[:10]))
+
+    xx, yy = np.meshgrid(x, y, indexing = 'ij')
+    xx_new, yy_new = np.meshgrid(x_new, y_new, indexing='ij')
+    ma = np.ma.masked_array(hist, mask = np.isnan(hist))
+
+    interp = NearestNDInterpolator((xx[~ma.mask], yy[~ma.mask]), ma[~ma.mask])
+    return interp(xx_new, yy_new)
 
         
 
