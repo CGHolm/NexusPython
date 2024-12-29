@@ -70,7 +70,9 @@ def healpy3Dsphere(self,
 
 
     cell_area = hp.nside2pixarea(nside) * shell_r**2
-    maps = {ivs: [] for ivs in variables}    
+    maps = {ivs: [] for ivs in variables}
+    if verbose > 0:
+        print('Interpolating unpopulated cells...')    
     for i, ivs in enumerate(variables):
         v = values[ivs]
         w = weights_dict[ivs]
@@ -81,16 +83,28 @@ def healpy3Dsphere(self,
 
         #### Starting interpolation for unpopulated pixels ###
         map_inter = map_clean.copy()
-        pixel_i = np.array(np.where(map_inter == 0)).squeeze()
+        pixel_i = np.where(map_inter == 0)[0]
         all_neighbours = hp.get_all_neighbours(nside, pixel_i).squeeze()
+        if all_neighbours.ndim == 1 : all_neighbours = all_neighbours[None,:]
+        saved_indecies = {}
+        saved_indecies['i'] = []; saved_indecies['index'] = [] 
+        if len(pixel_i) != 0:
+            for i, index in enumerate(pixel_i):
+                non_zero_neighbours = map_inter[all_neighbours[:,i]] != 0
+                if (non_zero_neighbours == False).all(): 
+                    saved_indecies['i'].append(i)
+                    saved_indecies['index'].append(index)
+                    continue
+                map_inter[index] = np.average(map_inter[all_neighbours[:,i]], weights = non_zero_neighbours)
+            
+            for i, index in zip(saved_indecies['i'], saved_indecies['index']):
+                non_zero_neighbours = map_inter[all_neighbours[:,i]] != 0
+                if (non_zero_neighbours == False).all(): 
+                    map_inter[index] = np.nan
+                else:
+                    map_inter[index] = np.average(map_inter[all_neighbours[:,i]], weights = non_zero_neighbours)
 
-        if verbose > 0:
-            print('Interpolating unpopulated cells...')
-
-        for i, index in enumerate(pixel_i):
-            non_zero_neighbours = map_inter[all_neighbours[:,i]] != 0
-            map_inter[index] = np.average(map_inter[all_neighbours[:,i]], weights = non_zero_neighbours)
-        
+            
         maps[ivs] = map_inter * cell_area
 
     return maps, nside
