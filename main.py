@@ -2,7 +2,7 @@ import numpy as np
 import sys, os, tqdm
 from .path_config import config
 import multiprocessing as mp
-from scipy.interpolate import NearestNDInterpolator
+from scipy.interpolate import NearestNDInterpolator, LinearNDInterpolator
 import gc
 
 #### All data variables are saved in cgs units. (Execpt sink_mass which is in [Msun]] #####
@@ -42,6 +42,7 @@ class dataclass:
                 if cpu_part == None: continue 
                 mass.extend(cpu_part[0])
                 time.extend(cpu_part[1])
+
             
             if clean_data:
                 i_del = []
@@ -49,9 +50,15 @@ class dataclass:
                     if time[i + 1] <= time[i]:
                         i_del.extend(i + np.where(time[i:] <= time[i])[0])
                 i_del = np.unique(i_del)
-                time = np.delete(time.copy(), i_del) - time[0]
+                time = np.delete(time.copy(), i_del)
                 mass = np.delete(mass.copy(), i_del)
+                non_zero_index = np.array([i for i, m in enumerate(mass) if m != 0])
+                self.sink_create = time[non_zero_index[0]]
+                mass = np.array(mass)[non_zero_index]
+                time = np.array(time)[non_zero_index]
+                time -= self.sink_create
                 self.sink_data['mdot'] = np.gradient(mass, time)
+
 
             self.sink_data['mass'] = mass
             self.sink_data['time'] = time
@@ -82,6 +89,7 @@ class dataclass:
 
             for save, read, unit in zip(['d', 'P', 'm'], ['density', 'thermal_pressure','mass'], ['d_cgs', 'P_cgs', 'code2msun']):
                 self.mhd[save] = np.array(data['hydro'][read]._array / getattr(self, unit), dtype = self.dtype).squeeze()
+            #self.mhd['P'] = calc_pressure(np.array(data['hydro']['d']._array, dtype = self.dtype).squeeze()) 
             self.mhd['gamma'] = np.array(data['hydro']['gamma']._array, dtype = self.dtype).squeeze() 
 
             del data
@@ -114,14 +122,14 @@ class dataclass:
         self.m = self.mhd['m'].astype(self.dtype)
 
     # Get the angular momentum from a sphere with radius r in au
-    def calc_Lshere(self, r = 50):
+    def calc_Lsphere(self, r = 50):
         mask = self.dist < r / self.code2au
         L = np.sum(np.cross(self.rel_xyz[:,mask], self.vrel[:,mask] * self.m[mask], axisa=0, axisb=0, axisc=0), axis = 1)
         self.L = L / np.linalg.norm(L)
 
     def define_cyl(self):
         try: self.L
-        except: self.calc_Lshere()
+        except: self.calc_Lsphere()
         self.cyl_z = np.sum(self.L[:,None] * self.rel_xyz, axis = 0).astype(self.dtype)
         self.cyl_r = self.rel_xyz -  self.cyl_z * self.L[:,None]     
         self.cyl_R = np.linalg.norm(self.cyl_r, axis = 0).astype(self.dtype)
@@ -246,7 +254,7 @@ def process_snapshot(snapshot, sink, path):
         return 
     return mass, time
 
-def _fill_2Dhist(hist, orig_coor, new_coor, periodic_x = False):
+def _fill_2Dhist(hist, orig_coor, new_coor, periodic_x = False, method = 'nearest'):
     x, y = orig_coor; x_new, y_new = new_coor
     if periodic_x:
         hist = np.vstack((hist[-10:], hist, hist[:10]))
@@ -256,7 +264,8 @@ def _fill_2Dhist(hist, orig_coor, new_coor, periodic_x = False):
     xx_new, yy_new = np.meshgrid(x_new, y_new, indexing='ij')
     ma = np.ma.masked_array(hist, mask = np.isnan(hist))
 
-    interp = NearestNDInterpolator((xx[~ma.mask], yy[~ma.mask]), ma[~ma.mask])
+    if method == 'nearest': interp = NearestNDInterpolator((xx[~ma.mask], yy[~ma.mask]), ma[~ma.mask])
+    if method == 'linear': interp = LinearNDInterpolator((xx[~ma.mask], yy[~ma.mask]), ma[~ma.mask])
     return interp(xx_new, yy_new)
 
         
