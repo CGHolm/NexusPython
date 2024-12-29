@@ -8,8 +8,8 @@ os.environ['OMP_NUM_THREADS'] = str(max_threads)
 # Now import Numba and configure the threads
 from numba import  set_num_threads 
 # Set the number of threads before any parallel operation
-set_num_threads(max_threads)
-
+try: set_num_threads(max_threads)
+except: set_num_threads(8)
 
 sys.path.insert(0, config["user_osyris_path"])
 import osyris
