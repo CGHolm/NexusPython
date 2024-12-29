@@ -6,7 +6,7 @@ sys.path.insert(0, config['user_lmfit_path'])
 from lmfit import Model  # type: ignore
 from ..main import dataclass
 
-def fit_HΣ(self, r_in = 5, r_out = 100, n_bins = 100, plot = True, MMSN = True, dpi = 100, verbose = 1):
+def fit_HΣ(self, r_in = 5, r_out = 100, n_bins = 100, plot = True, MMSN = True, dpi = 100, verbose = 1, validate_fit = False):
     try: self.cyl_z
     except: self.recalc_L()
     r_in /= self.code2au; r_out /= self.code2au
@@ -71,14 +71,15 @@ def fit_HΣ(self, r_in = 5, r_out = 100, n_bins = 100, plot = True, MMSN = True,
         return Σ_calc 
     
     if plot:
-        print('Validating fit...')
-        sigmas = np.asarray([check_HΣfit(σ) for σ in range(1, 3)])
+        if validate_fit:
+            print('Validating fit...')
+            sigmas = np.asarray([check_HΣfit(σ) for σ in range(1, 3)])
         fig, axs = plt.subplots(1,3, figsize = (20, 6), dpi = dpi)
         ax = axs[0]
 
         ax.loglog(r_1D * self.code2au, self.Σ_1D[:,0]* self.Σ_cgs, color = 'blue', label = 'Σ$_{Fit}$')
         for i in reversed(range(1, 3)):
-            ax.loglog(r_1D * self.code2au, sigmas[i - 1] * self.Σ_cgs, color = 'red', label = 'Σ$_{Calc}$'+f'$\propto\int\pm{i}H$', alpha = i/2, lw = 0.8)
+            if validate_fit: ax.loglog(r_1D * self.code2au, sigmas[i - 1] * self.Σ_cgs, color = 'red', label = 'Σ$_{Calc}$'+f'$\propto\int\pm{i}H$', alpha = i/2, lw = 0.8)
         ax.fill_between(r_1D * self.code2au, (self.Σ_1D[:,0] + self.Σ_1D[:,1])* self.Σ_cgs, (self.Σ_1D[:,0] - self.Σ_1D[:,1])* self.Σ_cgs, alpha = 0.45, color = 'blue')
         ax.set(ylabel = 'Σ$_{gas}$ [g/cm$^2$]', xlabel = 'Distance from sink [au]', title = 'Surface density Σ$_{gas}$(r)')
 
