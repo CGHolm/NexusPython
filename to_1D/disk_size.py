@@ -57,8 +57,12 @@ def calc_disksize(self,
     σvφ_1D = np.sqrt(vφ2 - vφ_1D**2) 
     self.vφ_1D = np.stack((vφ_1D, σvφ_1D), axis = 1)
 
-    self.kep_vel = (((G * (self.sink_mass  * self.m_cgs) * u.g) / (r_plot * self.code2au * u.au))**0.5).to('cm/s').value
+    ####### Include self-gravity from the disk #######
+    origo_bins = np.insert(rad_bins, 0, 0)[:-1]
+    annulus_mass, _ = np.histogram(np.linalg.norm(self.rel_xyz, axis = 0), bins = origo_bins, weights=self.mhd['m'])
+    accumulated_mass = np.cumsum(annulus_mass)
 
+    self.kep_vel = (((G * ((self.sink_mass + accumulated_mass)  * self.m_cgs) * u.g) / (r_plot * self.code2au * u.au))**0.5).to('cm/s').value
 
     orbitvel_ratio_mean = uniform_filter1d(self.v_cgs * self.vφ_1D[:,0] / self.kep_vel, size = avg_cells)
     for i in range(len(self.vφ_1D[:,0])):
