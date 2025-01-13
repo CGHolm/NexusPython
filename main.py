@@ -42,7 +42,7 @@ class dataclass:
                 if cpu_part == None: continue 
                 mass.extend(cpu_part[0])
                 time.extend(cpu_part[1])
-
+            mass = np.array(mass); time = np.array(time)
             
             if clean_data:
                 i_del = []
@@ -50,16 +50,24 @@ class dataclass:
                     if time[i + 1] <= time[i]:
                         i_del.extend(i + np.where(time[i:] <= time[i])[0])
                 i_del = np.unique(i_del)
-                time = np.delete(time.copy(), i_del)
-                mass = np.delete(mass.copy(), i_del)
-                non_zero_index = np.array([i for i, m in enumerate(mass) if m != 0])
-                self.sink_create = time[non_zero_index[0]]
-                mass = np.array(mass)[non_zero_index]
-                time = np.array(time)[non_zero_index]
-                time -= self.sink_create
-                self.sink_data['mdot'] = np.gradient(mass, time)
-
-
+                if not len(i_del) == 0:
+                    time = np.delete(time.copy(), i_del)
+                    mass = np.delete(mass.copy(), i_del)
+                Δt_mean = np.diff(time).mean()
+                for i, Δt in enumerate(np.diff(time)):
+                    if Δt > 1.1 *  Δt_mean: 
+                        time[i] = time[i-1] + Δt / 2 
+            #try:            
+            non_zero_index = np.array([i for i, m in enumerate(mass) if m != 0])
+            self.sink_create = time[non_zero_index[0]]
+            mass = np.array(mass)[non_zero_index]
+            time = np.array(time)[non_zero_index]
+            # For newer versions of DISPATCH sink data is only stored if the sink exists i.e. no m=0 entries.
+            #except:
+            #    print(time)
+            #    self.sink_create = time[0]
+            time -= self.sink_create
+            self.sink_data['mdot'] = np.gradient(mass, time)
             self.sink_data['mass'] = mass
             self.sink_data['time'] = time
 
