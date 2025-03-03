@@ -65,6 +65,7 @@ def calc_disksize(self,
     self.kep_vel = (((G * ((self.sink_mass + accumulated_mass)  * self.m_cgs) * u.g) / (r_plot * self.code2au * u.au))**0.5).to('cm/s').value
 
     orbitvel_ratio_mean = uniform_filter1d(self.v_cgs * self.vφ_1D[:,0] / self.kep_vel, size = avg_cells)
+    orbitvel_ratio_mean_sigma = uniform_filter1d(self.v_cgs * self.vφ_1D[:,1] / self.kep_vel, size = avg_cells)
     for i in range(len(self.vφ_1D[:,0])):
         if orbitvel_ratio_mean[i] < a:
             self.disk_size = r_plot[i] * self.code2au
@@ -75,7 +76,6 @@ def calc_disksize(self,
     except: 
         self.disk_size = np.nan
         if verbose > 0: print('No disk size found')
-
 
     if plot:
         fig, axs = plt.subplots(1, 2, figsize = (20,6),gridspec_kw={'width_ratios': [2, 1.5]})
@@ -89,6 +89,7 @@ def calc_disksize(self,
 
         axs[0].legend(frameon = False)
         axs[1].semilogx(r_plot * self.code2au, orbitvel_ratio_mean, label = 'v$_φ$/v$_K$ ratio', color = 'black', lw = 0.8)
+        axs[1].fill_between(r_plot * self.code2au, orbitvel_ratio_mean - orbitvel_ratio_mean_sigma, orbitvel_ratio_mean + orbitvel_ratio_mean_sigma, alpha = 0.5, color = 'grey', label = '$\pm1\sigma_{v_φ/v_K}$')
         axs[1].axhline(a, color = 'red', ls = '--', label = f'a = {a}')
         axs[1].axhline(1, color = 'black', ls = '-', alpha = 0.7)
         axs[1].set(xlabel = 'Distance from sink [au]', ylim = (0.5, 1.1))

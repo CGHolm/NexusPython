@@ -6,7 +6,17 @@ sys.path.insert(0, config['user_lmfit_path'])
 from lmfit import Model  # type: ignore
 from ..main import dataclass
 
-def fit_HΣ(self, r_in = 5, r_out = 100, n_bins = 100, plot = True, MMSN = True, dpi = 100, verbose = 1, validate_fit = False):
+def fit_HΣ(self, 
+           r_in = 5, 
+           r_out = 500, 
+           n_bins = 500,
+           h_bins_pct = 0.2, 
+           plot = True, 
+           MMSN = True, 
+           dpi = 100, 
+           verbose = 1, 
+           validate_fit = False):
+    
     try: self.cyl_z
     except: self.recalc_L()
     r_in /= self.code2au; r_out /= self.code2au
@@ -16,14 +26,12 @@ def fit_HΣ(self, r_in = 5, r_out = 100, n_bins = 100, plot = True, MMSN = True,
 
     def H_func(x, Σ, H): return (Σ) / (np.sqrt(2 * np.pi) * H) * np.exp( - x**2 / (2 * H**2)) 
 
-    def fit_scaleheight(ρ, h, x0):
+    def fit_scaleheight(ρ, h, σ_ρ, x0):
         model = Model(H_func)
         params = model.make_params(Σ = x0[0], H = x0[1])
-        result = model.fit(ρ, x = h, params = params)
+        result = model.fit(ρ, x = h, params = params, weights = σ_ρ, nan_policy='omit')
         fit_params = np.array(list(result.best_values.values()))
         fit_err = np.array([par.stderr for _, par in result.params.items()])
-        #fit_params[0] *= self.sn.cgs.au ; fit_err[0] *= self.sn.cgs.au
-
         return np.array([fit_params[0], fit_err[0]]), np.array([fit_params[1], fit_err[1]]) 
 
     mask = (self.cyl_R > r_in) & (self.cyl_R < r_out) & (abs(self.cyl_z) < 2 * r_out) 
@@ -38,14 +46,28 @@ def fit_HΣ(self, r_in = 5, r_out = 100, n_bins = 100, plot = True, MMSN = True,
         densities[bin - 1].extend(self.mhd['d'][mask][R_binID == bin])
         heights[bin - 1].extend(self.cyl_z[mask].flatten()[R_binID == bin])
 
+    for key in densities: densities[key] = np.array(densities[key]); heights[key] = np.array(heights[key])
+
     self.Σ_1D = np.zeros((n_bins - 1, 2))
     self.H_1D = np.zeros((n_bins - 1, 2))
     self.r_bins = r_bins
     x0 = np.array([1e3 / self.Σ_cgs, 7 / self.code2au]) # Initial guess for surface density and scaleheight in code-units
 
     if verbose > 0: print('Fitting surface density and scaleheight in each radial bin')
+    n_hbins = np.rint(n_bins * h_bins_pct).astype(int)
+    h_bins = np.linspace(-r_out, r_out, n_hbins)
+    h_plot = h_bins[:-1] + 0.5 * np.diff(h_bins) 
+    #### The function is changed to also bin height data calc. mean and uncertainty. ####
+    
     for i in tqdm.tqdm(range(n_bins - 1), disable = not self.loading_bar): 
-        self.Σ_1D[i], self.H_1D[i] = fit_scaleheight(ρ = densities[i], h = heights[i], x0 = x0)
+        rho_mean = np.full_like(h_plot, np.nan)
+        rho_sigma = np.full_like(h_plot, np.nan)
+        H_binID = np.digitize(heights[i], bins = h_bins) 
+        for j, H in enumerate(np.unique(H_binID)[1:-1]):
+            rho_mean[H - 1] = densities[i][H == H_binID].mean();
+            rho_sigma[H - 1] = densities[i][H == H_binID].std() / len(densities[i][H == H_binID])**0.5
+        
+        self.Σ_1D[i], self.H_1D[i] = fit_scaleheight(rho_mean, h_plot, rho_sigma, x0=x0)
 
     def check_HΣfit(nH):
         annulus_m_sum = np.zeros(n_bins - 1)
