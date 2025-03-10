@@ -28,7 +28,7 @@ class dataclass:
         self.amr = {}
         self.mhd = {}
 
-    def sink_evolution(self, sn_start, sn_end, sink_id, path, io = 'DISPATCH', clean_data = True, verbose = 1): 
+    def sink_evolution(self, sn_start, sn_end, sink_id, path, io = 'DISPATCH', clean_data = True, change_t0 = False, verbose = 1): 
         snapshots = np.arange(sn_start, sn_end + 1)
         self.sink_data = {}
         if io == 'DISPATCH':
@@ -59,14 +59,15 @@ class dataclass:
                         time[i] = time[i-1] + Δt / 2 
             #try:            
             non_zero_index = np.array([i for i, m in enumerate(mass) if m != 0])
-            self.sink_create = time[non_zero_index[0]]
+
+            if change_t0: self.sink_create = time[non_zero_index[0]]
             mass = np.array(mass)[non_zero_index]
             time = np.array(time)[non_zero_index]
             # For newer versions of DISPATCH sink data is only stored if the sink exists i.e. no m=0 entries.
             #except:
             #    print(time)
             #    self.sink_create = time[0]
-            time -= self.sink_create
+            if change_t0: time -= self.sink_create
             self.sink_data['mdot'] = np.gradient(mass, time)
             self.sink_data['mass'] = mass
             self.sink_data['time'] = time
@@ -157,6 +158,7 @@ class dataclass:
         while calc_ang(self.L, L_new) > err_deg:
             self.L = L_new
             L_new = reclac()
+            self.define_cyl()
             L_iter += 1
             if L_iter > 10: break
         if verbose != 0: print(f'Converged mean angular momentum vector after {L_iter} iteration(s)')
