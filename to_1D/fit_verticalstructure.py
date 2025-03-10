@@ -120,7 +120,7 @@ def fit_HΣ(self,
         ax.legend(frameon = False)
 
         ax = axs[2]
-        open_angle =  np.vstack((self.H_1D[:,0] / r_1D , self.H_1D[:,1] / r_1D )).T
+        open_angle =  np.vstack((np.arctan(self.H_1D[:,0] / r_1D) , np.arctan(self.H_1D[:,1] / r_1D) )).T
 
         ax.semilogx(r_1D * self.code2au, open_angle[:,0], color = 'purple', label = 'Opening angle H/r')
         ax.fill_between(r_1D * self.code2au, open_angle[:,0] + open_angle[:,1], open_angle[:,0] - open_angle[:,1], color = 'purple', alpha = 0.3, label = '$\pm σ_φ$')
