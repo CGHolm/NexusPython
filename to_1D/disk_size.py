@@ -82,14 +82,14 @@ def calc_disksize(self,
 
 
         axs[0].loglog(r_plot * self.code2au, self.kep_vel, label = 'Keplerian Orbital Velocity', color = 'black')
-        axs[0].loglog(r_plot * self.code2au, self.vφ_1D[:,0]* self.v_cgs , label = 'Azimuthal velocity v$_φ$', c = 'blue')
-        axs[0].fill_between(r_plot * self.code2au, (self.vφ_1D[:,0]- self.vφ_1D[:,1]) * self.v_cgs, (self.vφ_1D[:,0]+ self.vφ_1D[:,1])* self.v_cgs, alpha = 0.5, label = '$\pm1\sigma_{φ}$')
+        axs[0].loglog(r_plot * self.code2au, self.vφ_1D[:,0]* self.v_cgs , label = 'Azimuthal velocity v$_\phi$', c = 'blue')
+        axs[0].fill_between(r_plot * self.code2au, (self.vφ_1D[:,0]- self.vφ_1D[:,1]) * self.v_cgs, (self.vφ_1D[:,0]+ self.vφ_1D[:,1])* self.v_cgs, alpha = 0.5, label = '$\pm1\sigma_{\phi}$')
 
         axs[0].set(xlabel = 'Distance from sink [au]', ylabel = 'Orbital speed [cm/s]')
 
         axs[0].legend(frameon = False)
-        axs[1].semilogx(r_plot * self.code2au, orbitvel_ratio_mean, label = 'v$_φ$/v$_K$ ratio', color = 'black', lw = 0.8)
-        axs[1].fill_between(r_plot * self.code2au, orbitvel_ratio_mean - orbitvel_ratio_mean_sigma, orbitvel_ratio_mean + orbitvel_ratio_mean_sigma, alpha = 0.5, color = 'grey', label = '$\pm1\sigma_{v_φ/v_K}$')
+        axs[1].semilogx(r_plot * self.code2au, orbitvel_ratio_mean, label = 'v$_\phi$/v$_K$ ratio', color = 'black', lw = 0.8)
+        axs[1].fill_between(r_plot * self.code2au, orbitvel_ratio_mean - orbitvel_ratio_mean_sigma, orbitvel_ratio_mean + orbitvel_ratio_mean_sigma, alpha = 0.5, color = 'grey', label = '$\pm1\sigma_{v_\phi/v_K}$')
         axs[1].axhline(a, color = 'red', ls = '--', label = f'a = {a}')
         axs[1].axhline(1, color = 'black', ls = '-', alpha = 0.7)
         axs[1].set(xlabel = 'Distance from sink [au]', ylim = (0.5, 1.1))

@@ -99,23 +99,23 @@ def fit_HΣ(self,
         fig, axs = plt.subplots(1,3, figsize = (20, 6), dpi = dpi)
         ax = axs[0]
 
-        ax.loglog(r_1D * self.code2au, self.Σ_1D[:,0]* self.Σ_cgs, color = 'blue', label = 'Σ$_{Fit}$')
+        ax.loglog(r_1D * self.code2au, self.Σ_1D[:,0]* self.Σ_cgs, color = 'blue', label = '$\Sigma_{Fit}$')
         for i in reversed(range(1, 3)):
-            if validate_fit: ax.loglog(r_1D * self.code2au, sigmas[i - 1] * self.Σ_cgs, color = 'red', label = 'Σ$_{Calc}$'+f'$\propto\int\pm{i}H$', alpha = i/2, lw = 0.8)
+            if validate_fit: ax.loglog(r_1D * self.code2au, sigmas[i - 1] * self.Σ_cgs, color = 'red', label = '$\Sigma_{Calc}$'+f'$\propto\int\pm{i}H$', alpha = i/2, lw = 0.8)
         ax.fill_between(r_1D * self.code2au, (self.Σ_1D[:,0] + self.Σ_1D[:,1])* self.Σ_cgs, (self.Σ_1D[:,0] - self.Σ_1D[:,1])* self.Σ_cgs, alpha = 0.45, color = 'blue')
-        ax.set(ylabel = 'Σ$_{gas}$ [g/cm$^2$]', xlabel = 'Distance from sink [au]', title = 'Surface density Σ$_{gas}$(r)')
+        ax.set(ylabel = '$\Sigma_{gas}$ [g/cm$^2$]', xlabel = 'Distance from sink [au]', title = 'Surface density $\Sigma_{gas}$(r)')
 
         if MMSN:
             Σ_MMSN = lambda r: 1700 * (r)**(-3/2)
             r = r_1D * self.code2au
             #ax.text(r[0], Σ_MMSN(r)[0] - 25, 'Σ$_{MMSN}\propto r^{-3/2}$', va = 'top', ha = 'left', rotation = -26, color = 'grey')
-            ax.loglog(r, Σ_MMSN(r), color = 'grey', ls = '--', label = 'Σ$_{MMSN}\propto r^{-3/2}$')
+            ax.loglog(r, Σ_MMSN(r), color = 'grey', ls = '--', label = '$\Sigma_{MMSN}\propto r^{-3/2}$')
 
         ax.legend(frameon = False)
 
         ax = axs[1]
         ax.loglog(r_1D * self.code2au, self.H_1D[:,0] * self.code2au, label = 'Scale height H', color = 'green')
-        ax.fill_between(r_1D * self.code2au, (self.H_1D[:,0] + self.H_1D[:,1]) * self.code2au, (self.H_1D[:,0] - self.H_1D[:,1]) * self.code2au, alpha = 0.3, color = 'green', label = '$\pm σ_H$')
+        ax.fill_between(r_1D * self.code2au, (self.H_1D[:,0] + self.H_1D[:,1]) * self.code2au, (self.H_1D[:,0] - self.H_1D[:,1]) * self.code2au, alpha = 0.3, color = 'green', label = '$\pm \sigma_H$')
         ax.set(ylabel = 'Scale height [au]', xlabel = 'Distance from sink [au]', title = 'Scale height  H(r)')
         ax.legend(frameon = False)
 
@@ -123,11 +123,11 @@ def fit_HΣ(self,
         open_angle =  np.vstack((np.arctan(self.H_1D[:,0] / r_1D) , np.arctan(self.H_1D[:,1] / r_1D) )).T
 
         ax.semilogx(r_1D * self.code2au, open_angle[:,0], color = 'purple', label = 'Opening angle H/r')
-        ax.fill_between(r_1D * self.code2au, open_angle[:,0] + open_angle[:,1], open_angle[:,0] - open_angle[:,1], color = 'purple', alpha = 0.3, label = '$\pm σ_φ$')
+        ax.fill_between(r_1D * self.code2au, open_angle[:,0] + open_angle[:,1], open_angle[:,0] - open_angle[:,1], color = 'purple', alpha = 0.3, label = '$\pm \sigma_\phi$')
 
         #Values for ticks
         values = np.linspace(0, np.pi/2, 5)
-        names = ['$0$', '$π/8$', '$π/4$', '$3π/8$', '$π/2$']
+        names = ['$0$', '$\pi/8$', '$\pi/4$', '$3\pi/8$', '$\pi/2$']
         ax.set_yticks(values); ax.set_yticklabels(names)
         ax2 = ax.twinx()
         ax2.set_yticks(np.rad2deg(values))
