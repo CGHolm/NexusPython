@@ -14,7 +14,7 @@ def calc_disksize(self,
                   n_bins = 200, 
                   a = 0.8, 
                   plot = True, 
-                  avg_cells = 10, 
+                  smooth_pct = 0.1, 
                   verbose = 1):
     
     try: self.cyl_z
@@ -28,6 +28,7 @@ def calc_disksize(self,
                         n_bins = n_bins, 
                         plot = False, 
                         verbose=verbose)
+            
     if use_fitted_H:
         rad_bins = self.r_bins
         r_plot = rad_bins[:-1] + 0.5 * np.diff(rad_bins)
@@ -56,6 +57,7 @@ def calc_disksize(self,
     vφ2 = (h_vφ2/h_mass) 
     σvφ_1D = np.sqrt(vφ2 - vφ_1D**2) 
     self.vφ_1D = np.stack((vφ_1D, σvφ_1D), axis = 1)
+    self.r_plot_disksize = r_plot
 
     ####### Include self-gravity from the disk #######
     origo_bins = np.insert(rad_bins, 0, 0)[:-1]
@@ -64,18 +66,75 @@ def calc_disksize(self,
 
     self.kep_vel = (((G * ((self.sink_mass + accumulated_mass)  * self.m_cgs) * u.g) / (r_plot * self.code2au * u.au))**0.5).to('cm/s').value
 
-    orbitvel_ratio_mean = uniform_filter1d(self.v_cgs * self.vφ_1D[:,0] / self.kep_vel, size = avg_cells)
-    orbitvel_ratio_mean_sigma = uniform_filter1d(self.v_cgs * self.vφ_1D[:,1] / self.kep_vel, size = avg_cells)
-    for i in range(len(self.vφ_1D[:,0])):
-        if orbitvel_ratio_mean[i] < a:
-            self.disk_size = r_plot[i] * self.code2au
-            if verbose > 0: print(f'Disk size: {self.disk_size:2.1f} au')
+    keplerian_disk = True
+    self.disksize = {
+        'Disksize convergence': keplerian_disk,
+        'Velocity drop': np.full((2), np.nan),
+        'Rayleigh': np.full((2), np.nan),
+        'Combined': np.full((2), np.nan)}
+    
+    filter_size = int(len(r_plot) * smooth_pct)
+
+    ####__________________METHOD: DROP IN VELOCITY FROM 80% OF KEPLERIAN_______________#####
+    ratio = self.vφ_1D[:,0] / (self.kep_vel / self.v_cgs)
+    ratio_sigma = self.vφ_1D[:,1] / (self.kep_vel / self.v_cgs)
+    orbitvel_ratio_mean = uniform_filter1d(ratio, size = filter_size)
+    orbitvel_ratio_sigma = uniform_filter1d(ratio_sigma, size = filter_size)
+
+    indencies_above = np.array(orbitvel_ratio_mean > a, dtype = 'int')
+
+    if sum(indencies_above) == 0 or (indencies_above == 1).all(): 
+        keplerian_disk = False
+    segment_starts = np.where(np.diff(indencies_above, prepend=0) == 1)[0]
+    segment_ends = np.where(np.diff(indencies_above, append=0) == -1)[0]
+    if segment_ends.size == 0: keplerian_disk = False
+    else:
+        largest_segment_end = np.argmax(r_plot[segment_ends] - r_plot[segment_starts])
+        gradient = np.gradient(orbitvel_ratio_mean, r_plot)[segment_ends[largest_segment_end]]
+        if gradient > 0 or np.isnan(gradient): keplerian_disk = False
+        else:  
+            r_index = segment_ends[largest_segment_end]
+            self.disksize['Velocity drop'][0] = r_plot[r_index] * self.code2au
+            self.disksize['Velocity drop'][1] = abs(np.gradient(orbitvel_ratio_mean, r_plot)[r_index]**(-1) *  orbitvel_ratio_sigma[r_index]) * self.code2au
+
+    ####__________________METHOD: RAYLEIGH DISCRIMINANT < 0_______________#####
+
+    R = r_plot 
+    Ω = self.vφ_1D[:,0] / R
+    σ_Ω = self.vφ_1D[:,1] / R
+
+    dR_RΩ = uniform_filter1d(2 * Ω * R * np.gradient(Ω,R), size = filter_size) # Smooth out the differential to remove oscillation
+    prefactor = 4 *  Ω**2  
+    kappa2 = uniform_filter1d(prefactor + dR_RΩ, size = filter_size)
+    filter_1dev = uniform_filter1d(np.gradient(Ω, R), size=filter_size)
+
+    filter_2dev = uniform_filter1d(np.gradient(filter_1dev, R), size=filter_size)
+    sigma_kappa2 = uniform_filter1d(abs((8 * Ω  
+                                        + 2 * R * filter_1dev 
+                                        + 2 * R * Ω * filter_2dev * filter_1dev**-1) * σ_Ω), size = filter_size)
+
+    if np.isnan(kappa2).all(): keplerian_disk = False
+    indencies_below = np.array(kappa2 < 0, dtype = 'int')
+    if sum(indencies_below) == 0 or (indencies_below == 1).all(): keplerian_disk = False
+    gradient = np.gradient(kappa2, r_plot)
+    for j, r_au in enumerate(R):
+        if kappa2[j] < 0 and gradient[j] < 0 and ~np.isnan(gradient[j]):
+            self.disksize['Rayleigh'][0] = R[j] * self.code2au
+            self.disksize['Rayleigh'][1] = abs(np.gradient(kappa2, R)[j]**(-1) *  sigma_kappa2[j]) * self.code2au
             break
-    try: 
-        self.disk_size
-    except: 
-        self.disk_size = np.nan
-        if verbose > 0: print('No disk size found')
+
+    mean = ((self.disksize['Velocity drop'][0] / self.disksize['Velocity drop'][1]**2 
+        + self.disksize['Rayleigh'][0] / self.disksize['Rayleigh'][1]**2) 
+        / (self.disksize['Velocity drop'][1]**-2 + self.disksize['Rayleigh'][1]**-2))
+    mean_sigma = (1 / (self.disksize['Velocity drop'][1]**-2 + self.disksize['Rayleigh'][1]**-2))**0.5
+
+    self.disksize['Combined'] = [mean, mean_sigma]
+    self.disksize['Disksize convergence'] = keplerian_disk
+
+    if verbose > 0: 
+        print('Disk size from 2 methods [au]:')
+        for key, value in self.disksize.items():
+            print(f"{key}: {value}")
 
     if plot:
         fig, axs = plt.subplots(1, 2, figsize = (20,6),gridspec_kw={'width_ratios': [2, 1.5]})
@@ -89,7 +148,7 @@ def calc_disksize(self,
 
         axs[0].legend(frameon = False)
         axs[1].semilogx(r_plot * self.code2au, orbitvel_ratio_mean, label = 'v$_\phi$/v$_K$ ratio', color = 'black', lw = 0.8)
-        axs[1].fill_between(r_plot * self.code2au, orbitvel_ratio_mean - orbitvel_ratio_mean_sigma, orbitvel_ratio_mean + orbitvel_ratio_mean_sigma, alpha = 0.5, color = 'grey', label = '$\pm1\sigma_{v_\phi/v_K}$')
+        axs[1].fill_between(r_plot * self.code2au, orbitvel_ratio_mean - orbitvel_ratio_sigma, orbitvel_ratio_mean + orbitvel_ratio_sigma, alpha = 0.5, color = 'grey', label = '$\pm1\sigma_{v_\phi/v_K}$')
         axs[1].axhline(a, color = 'red', ls = '--', label = f'a = {a}')
         axs[1].axhline(1, color = 'black', ls = '-', alpha = 0.7)
         axs[1].set(xlabel = 'Distance from sink [au]', ylim = (0.5, 1.1))
@@ -97,3 +156,85 @@ def calc_disksize(self,
     
     
 dataclass.calc_disksize = calc_disksize
+
+
+###### The following function is only for already extracted data #######
+###### All should be given in code units, and vφ_1D should be a (N, 2) array, i.e. containing variability
+
+def calc_disksize_postprocessing(self, 
+                  vφ_1D,
+                  r_plot,
+                  kep_vel,                
+                  a = 0.8,
+                  smooth_pct = 0.1, 
+                  verbose = 1):
+    
+    keplerian_disk = True
+    disksize = {
+        'Disksize convergence': keplerian_disk,
+        'Velocity drop': np.full((2), np.nan),
+        'Rayleigh': np.full((2), np.nan),
+        'Combined': np.full((2), np.nan)}
+    
+    filter_size = int(len(r_plot) * smooth_pct)
+
+    ####__________________METHOD: DROP IN VELOCITY FROM 80% OF KEPLERIAN_______________#####
+    ratio = vφ_1D[:,0] / (kep_vel )
+    ratio_sigma = vφ_1D[:,1] / (kep_vel)
+    orbitvel_ratio_mean = uniform_filter1d(ratio, size = filter_size)
+    orbitvel_ratio_sigma = uniform_filter1d(ratio_sigma, size = filter_size)
+
+    indencies_above = np.array(orbitvel_ratio_mean > a, dtype = 'int')
+
+    if sum(indencies_above) == 0 or (indencies_above == 1).all(): 
+        keplerian_disk = False
+    segment_starts = np.where(np.diff(indencies_above, prepend=0) == 1)[0]
+    segment_ends = np.where(np.diff(indencies_above, append=0) == -1)[0]
+    if segment_ends.size == 0: keplerian_disk = False
+    else:
+        largest_segment_end = np.argmax(r_plot[segment_ends] - r_plot[segment_starts])
+        gradient = np.gradient(orbitvel_ratio_mean, r_plot)[segment_ends[largest_segment_end]]
+        if gradient > 0 or np.isnan(gradient): keplerian_disk = False
+        else:  
+            r_index = segment_ends[largest_segment_end]
+            disksize['Velocity drop'][0] = r_plot[r_index] * self.code2au
+            disksize['Velocity drop'][1] = abs(np.gradient(orbitvel_ratio_mean, r_plot)[r_index]**(-1) *  orbitvel_ratio_sigma[r_index]) * self.code2au
+
+    ####__________________METHOD: RAYLEIGH DISCRIMINANT < 0_______________#####
+
+    R = r_plot 
+    Ω = vφ_1D[:,0] / R
+    σ_Ω = vφ_1D[:,1] / R
+
+    dR_RΩ = uniform_filter1d(2 * Ω * R * np.gradient(Ω,R), size = filter_size) # Smooth out the differential to remove oscillation
+    prefactor = 4 *  Ω**2  
+    kappa2 = uniform_filter1d(prefactor + dR_RΩ, size = filter_size)
+    filter_1dev = uniform_filter1d(np.gradient(Ω, R), size=filter_size)
+
+    filter_2dev = uniform_filter1d(np.gradient(filter_1dev, R), size=filter_size)
+    sigma_kappa2 = uniform_filter1d(abs((8 * Ω  
+                                        + 2 * R * filter_1dev 
+                                        + 2 * R * Ω * filter_2dev * filter_1dev**-1) * σ_Ω), size = filter_size)
+
+    if np.isnan(kappa2).all(): keplerian_disk = False
+    indencies_below = np.array(kappa2 < 0, dtype = 'int')
+    if sum(indencies_below) == 0 or (indencies_below == 1).all(): keplerian_disk = False
+    gradient = np.gradient(kappa2, r_plot)
+    for j, r_au in enumerate(R):
+        if kappa2[j] < 0 and gradient[j] < 0 and ~np.isnan(gradient[j]):
+            disksize['Rayleigh'][0] = R[j] * self.code2au
+            disksize['Rayleigh'][1] = abs(np.gradient(kappa2, R)[j]**(-1) *  sigma_kappa2[j]) * self.code2au
+            break
+
+    # Weigthed mean and uncertainty:
+    mean = ((disksize['Velocity drop'][0] / disksize['Velocity drop'][1]**2 
+        + disksize['Rayleigh'][0] / disksize['Rayleigh'][1]**2) 
+        / (disksize['Velocity drop'][1]**-2 + disksize['Rayleigh'][1]**-2))
+    mean_sigma = (1 / (disksize['Velocity drop'][1]**-2 + disksize['Rayleigh'][1]**-2))**0.5
+
+    disksize['Combined'] = [mean, mean_sigma]
+    disksize['Disksize convergence'] = keplerian_disk
+    
+    return disksize
+
+dataclass.calc_disksize_postprocessing = calc_disksize_postprocessing
