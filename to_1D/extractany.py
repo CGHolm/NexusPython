@@ -5,6 +5,7 @@ from ..path_config import config
 
 def extract_1D(self, variables,
                weights,
+               n_σH = 3,
                data_name = 'data1'):
     
     try: self.extract1D_ivs[data_name] = {}
@@ -21,7 +22,7 @@ def extract_1D(self, variables,
     H_func = interp1d(self.H_1D[:,0], r_plot, fill_value='extrapolate')
 
     mask_r = (self.cyl_R > self.r_bins.min()) & (self.cyl_R < self.r_bins.max())
-    mask_h = abs(self.cyl_z[mask_r]) < 1 * H_func(self.cyl_R[mask_r])
+    mask_h = abs(self.cyl_z[mask_r]) < n_σH * H_func(self.cyl_R[mask_r])
     mask = np.zeros_like(mask_r, dtype = 'bool')
     mask[mask_r] = mask_h
 
