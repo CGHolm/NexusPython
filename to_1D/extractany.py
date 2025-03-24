@@ -3,6 +3,7 @@ from scipy.interpolate import interp1d
 from ..main import dataclass
 from ..path_config import config
 
+
 def extract_1D(self, variables,
                weights,
                n_σH = 3,
@@ -10,6 +11,11 @@ def extract_1D(self, variables,
     
     try: self.extract1D_ivs[data_name] = {}
     except: self.extract1D_ivs = {data_name: {}}
+
+    def extend_func1D(all_values, all_points):
+        ma = np.ma.masked_array(all_values, mask = np.isnan(all_values))
+        f = interp1d(all_points[~ma.mask], all_values[~ma.mask], kind = 'linear', fill_value='extrapolate')
+        return f(all_points)
 
     try: 
         self.H_1D
@@ -19,7 +25,7 @@ def extract_1D(self, variables,
         self.fit_HΣ(verbose = 1)
 
     r_plot = self.r_bins[:-1] + 0.5 * np.diff(self.r_bins)
-    H_func = interp1d(self.H_1D[:,0], r_plot, fill_value='extrapolate')
+    H_func = interp1d(r_plot, self.H_1D[:,0], fill_value='extrapolate')
 
     mask_r = (self.cyl_R > self.r_bins.min()) & (self.cyl_R < self.r_bins.max())
     mask_h = abs(self.cyl_z[mask_r]) < n_σH * H_func(self.cyl_R[mask_r])
@@ -53,8 +59,11 @@ def extract_1D(self, variables,
             bin_index = np.digitize(R_coor, bins = self.r_bins) 
             for bin in np.unique(bin_index):
                 if bin == 0 or bin == len(self.r_bins): continue
-                raw_data[bin - 1].extend(getattr(self, ivs)[mask][bin_index == bin])
-            
+                if (ivs == np.array(['d', 'P'])).any():
+                    raw_data[bin - 1].extend(self.mhd[ivs][mask][bin_index == bin])
+                else:
+                    raw_data[bin - 1].extend(getattr(self, ivs)[mask][bin_index == bin])
+                    
             self.extract1D_ivs[data_name][ivs] = raw_data
             continue
 
@@ -65,6 +74,10 @@ def extract_1D(self, variables,
         value = weighted_value / weight
         value2 = weighted_value2 / weight
         sigma_value = np.sqrt(value2 - value**2) 
+        if np.isnan(np.concatenate((value, sigma_value))).any():
+            value = extend_func1D(value, r_plot)
+            sigma_value = extend_func1D(sigma_value, r_plot)
+    
         
         self.extract1D_ivs[data_name][ivs] = np.vstack((value, sigma_value))
 
