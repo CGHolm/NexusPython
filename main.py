@@ -20,6 +20,7 @@ class dataclass:
         self.m_cgs = 2998 * self.msun
         self.code2msun = self.m_cgs / self.msun
         self.d_cgs = self.m_cgs / self.l_cgs**3             # density in g / cm^-3
+        self.E_cgs = self.m_cgs * self.v_cgs**2
         self.Σ_cgs = self.d_cgs * self.l_cgs
         self.P_cgs = self.d_cgs * (self.l_cgs / self.t_cgs)**2
         self.B_cgs = np.sqrt(4.0 * np.pi * self.d_cgs * self.v_cgs ** 2)

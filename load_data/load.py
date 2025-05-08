@@ -26,7 +26,7 @@ def load_DISPATCH(self, snap, path, loading_bar, verbose):
         print(f'Only selecting patches for the combined dataset within {self.data_sphere_au} au and with level > {self.lv_cut}')
 
     self.amr = {key: [] for key in ['pos', 'ds']}
-    self.mhd = {key: [] for key in ['vel', 'B', 'd', 'P', 'm', 'gamma']}
+    self.mhd = {key: [] for key in ['vel', 'B', 'p','d', 'P', 'm', 'gamma', 'phi']}
 
     sys.path.insert(0, config["user_dispatch_path"])
     import dispatch as dis
@@ -60,13 +60,22 @@ def load_DISPATCH(self, snap, path, loading_bar, verbose):
         p.xyz = np.array(np.meshgrid(p.xi, p.yi, p.zi, indexing='ij'))
         p.vel_xyz = np.concatenate([p.var(f'u'+axis)[None,...] for axis in ['x','y','z']], axis = 0)
         p.B =  np.concatenate([p.var(f'b'+axis)[None,...] for axis in ['x','y','z']], axis = 0)
+        p.p = np.concatenate([p.var(f'p'+axis)[None,...] for axis in ['x','y','z']], axis = 0)
+        
 
         nbors = [sn.patchid[i] for i in p.nbor_ids if i in sn.patchid]
         children = [ n for n in nbors if n.level == p.level + 1]
         leafs = [n for n in children if ((n.position - p.position)**2).sum() < ((p.size)**2).sum()/12]
         if len(leafs) == 8: continue
         
-        to_extract = np.ones(pp[0].n, dtype=bool)
+        if self.data_sphere_au == None:
+            to_extract = np.ones(pp[0].n, dtype=bool)
+        else:
+            p.rel_xyz = p.xyz - self.sink_pos[:, None, None, None]
+            p.rel_xyz[p.rel_xyz < -0.5] += 1
+            p.rel_xyz[p.rel_xyz > 0.5] -= 1
+            p.dist_xyz = np.linalg.norm(p.rel_xyz, axis = 0) 
+            to_extract = p.dist_xyz < self.data_sphere_au / self.code2au
         for lp in leafs: 
             leaf_extent = np.vstack((lp.position - 0.5 * lp.size, lp.position + 0.5 * lp.size)).T
             covered_bool = ~np.all((p.xyz > leaf_extent[:, 0, None, None, None]) 
@@ -77,11 +86,13 @@ def load_DISPATCH(self, snap, path, loading_bar, verbose):
         self.amr['ds'].extend((p.ds[0] * np.ones(to_extract.sum())))
 
         self.mhd['vel'].extend((p.vel_xyz[:,to_extract].T).tolist())
+        self.mhd['p'].extend((p.p[:,to_extract].T).tolist())
         self.mhd['B'].extend((p.B[:,to_extract].T).tolist())
         self.mhd['d'].extend((p.var('d')[to_extract].T).tolist())
         self.mhd['P'].extend((p.P[to_extract].T).tolist())
         self.mhd['m'].extend((p.m[to_extract].T).tolist())     
         self.mhd['gamma'].extend((p.γ[to_extract].T).tolist())
+        self.mhd['phi'].extend((p.var('phi')[to_extract].T).tolist())
 
     for key in self.amr:
         self.amr[key] = np.array(self.amr[key], dtype = self.dtype).T
