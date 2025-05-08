@@ -32,7 +32,7 @@ def calc_disksize(self,
     if use_fitted_H:
         rad_bins = self.r_bins
         r_plot = rad_bins[:-1] + 0.5 * np.diff(rad_bins)
-        H_func = interp1d(self.H_1D[:,0], r_plot, fill_value='extrapolate')
+        H_func = interp1d(r_plot, self.H_1D[:,0], fill_value='extrapolate')
 
         mask_r = (self.cyl_R > rad_bins.min()) & (self.cyl_R < rad_bins.max())
         mask_h = abs(self.cyl_z[mask_r]) < 3 * H_func(self.cyl_R[mask_r])
