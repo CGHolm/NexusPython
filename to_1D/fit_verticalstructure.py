@@ -29,6 +29,8 @@ def fit_HΣ(self,
     def fit_scaleheight(ρ, h, σ_ρ, x0):
         model = Model(H_func)
         params = model.make_params(Σ = x0[0], H = x0[1])
+        params['H'].min = 0
+        params['Σ'].min = 0
         result = model.fit(ρ, x = h, params = params, weights = σ_ρ, nan_policy='omit')
         fit_params = np.array(list(result.best_values.values()))
         fit_err = np.array([par.stderr for _, par in result.params.items()])
